@@ -1,0 +1,86 @@
+// prisma/schema.prisma
+
+// บอก Prisma ให้สร้าง Prisma Client สำหรับ Node.js/TypeScript
+generator client {
+  provider = "prisma-client-js"
+}
+
+// กำหนด DataSource เป็น PostgreSQL และใช้ Connection String จาก .env
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Models สำหรับ POS System ---
+
+// Model: User (พนักงาน)
+model User {
+  id        String   @id @default(uuid()) // Primary key, ใช้ UUID เป็นค่าเริ่มต้น
+  username  String   @unique             // ชื่อผู้ใช้, ต้องไม่ซ้ำกัน
+  password  String                       // รหัสผ่าน (จะถูก Hash)
+  role      String                       // บทบาท: 'admin' หรือ 'staff'
+  createdAt DateTime @default(now())    // วันที่สร้าง
+  updatedAt DateTime @updatedAt         // วันที่อัปเดตล่าสุด
+
+  sales Sale[] // Relationship: One-to-many กับ Sale (ผู้ใช้ 1 คนทำหลายการขายได้)
+}
+
+// Model: Product (สินค้า)
+model Product {
+  id           String    @id @default(uuid())
+  name         String    @unique
+  description  String?   // รายละเอียดสินค้า (เป็น Null ได้)
+  price        Float     // ราคาสินค้า
+  stock        Int       // จำนวนสินค้าในสต็อก
+  sku          String?   @unique // Stock Keeping Unit (รหัสสินค้า), เป็น Null ได้, ต้องไม่ซ้ำ
+  isRefundable Boolean   @default(false) // สำหรับระบบคืนเงินสมาชิก 2%
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  saleItems SaleItem[] // Relationship: One-to-many กับ SaleItem (สินค้า 1 ชิ้นอยู่ในหลายรายการขายได้)
+}
+
+// Model: Customer (ลูกค้า/สมาชิก)
+model Customer {
+  id        String    @id @default(uuid())
+  name      String
+  email     String?   
+  phone     String?
+  isMember  Boolean   @default(true) // เป็นสมาชิกหรือไม่
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  sales Sale[] // Relationship: One-to-many กับ Sale (ลูกค้า 1 คนทำหลายการขายได้)
+}
+
+// Model: Sale (รายการขาย)
+model Sale {
+  id          String    @id @default(uuid())
+  totalAmount Float     // ราคารวมก่อนหักส่วนลด/คืนเงิน
+  discount    Float     @default(0) // ส่วนลดหรือยอดเงินคืน
+  finalAmount Float     // ราคาสุทธิที่ลูกค้าต้องจ่าย
+  saleDate    DateTime  @default(now())
+
+  // Relationships
+  userId      String    // Foreign key ไปยัง User
+  user        User      @relation(fields: [userId], references: [id])
+
+  customerId  String?   // Foreign key ไปยัง Customer (เป็น Null ได้ถ้าไม่ใช่สมาชิก)
+  customer    Customer? @relation(fields: [customerId], references: [id])
+
+  items SaleItem[] // Relationship: One-to-many กับ SaleItem (การขาย 1 ครั้งมีหลายรายการสินค้าได้)
+}
+
+// Model: SaleItem (รายการสินค้าในแต่ละการขาย)
+model SaleItem {
+  id        String  @id @default(uuid())
+  quantity  Int     // จำนวนสินค้า
+  price     Float   // ราคา ณ ตอนที่ขาย (เผื่อกรณีราคาสินค้ามีการเปลี่ยนแปลง)
+
+  // Relationships
+  productId String  // Foreign key ไปยัง Product
+  product   Product @relation(fields: [productId], references: [id])
+
+  saleId    String  // Foreign key ไปยัง Sale
+  sale      Sale    @relation(fields: [saleId], references: [id])
+}
