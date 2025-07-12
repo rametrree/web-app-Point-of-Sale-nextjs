@@ -16,45 +16,130 @@ const printSaleReceipt = (sale: any, cartItems: CartItem[], finalAmount: number,
   const receiptContent = `
     <html>
     <head>
-        <title>Sale Receipt</title>
+        <title>Delivery Note</title>
         <style>
-            body { font-family: 'Sarabun', sans-serif; font-size: 12px; margin: 0; padding: 10px; }
-            .container { width: 200px; margin: 0 auto; }
-            .header, .footer { text-align: center; margin-bottom: 10px; }
-            .item { display: flex; justify-content: space-between; margin-bottom: 2px; }
-            .item-name { flex-grow: 1; }
-            .item-qty { width: 30px; text-align: center; }
-            .item-price { width: 50px; text-align: right; }
-            .total { text-align: right; font-weight: bold; margin-top: 10px; }
-            .line { border-top: 1px dashed #000; margin: 5px 0; }
+            body { font-family: 'Sarabun', sans-serif; font-size: 12px; margin: 0; padding: 20px; background-color: #f9f9f9; }
+            .container { width: 228.6mm; min-height: 279.4mm; margin: 0 auto; border: 1px solid #ddd; padding: 20px; box-sizing: border-box; background-color: #fff; }
+            .header-section { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; background-color: #e0f7fa; padding: 10px; border-bottom: 1px solid #b2ebf2; }
+            .company-info { text-align: left; }
+            .company-info h3 { margin: 0; font-size: 20px; color: #00796b; }
+            .company-info p { margin: 2px 0; font-size: 10px; }
+            .document-title { text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 10px; color: #00796b; }
+            .document-details { display: flex; justify-content: space-between; margin-bottom: 15px; }
+            .detail-block { width: 48%; }
+            .detail-block p { margin: 2px 0; }
+            .detail-block .bold { font-weight: bold; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #e0f2f7; color: #333; }
+            .text-right { text-align: right; }
+            .text-center { text-align: center; }
+            .total-row td { font-weight: bold; }
+            .signature-section { display: flex; justify-content: space-around; margin-top: 50px; text-align: center; }
+            .signature-block { width: 45%; }
+            .signature-line { border-bottom: 1px solid #aaa; margin-top: 40px; margin-bottom: 5px; }
+            .note { margin-top: 30px; font-size: 10px; color: #555; }
+
+            /* Column Widths */
+            .item-name { width: 40%; }
+            .item-qty { width: 15%; }
+            .item-unit { width: 15%; }
+            .item-price { width: 15%; }
+            .item-total { width: 15%; }
         </style>
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <h3>KNC POS</h3>
-                <p>Sale ID: ${sale.id}</p>
-                <p>Date: ${formatDate(new Date())}</p>
-            </div>
-            <div class="line"></div>
-            ${customer ? `<p>Customer: ${customer.name} ${customer.isMember ? '(Member)' : ''}</p><div class="line"></div>` : ''}
-            
-            ${cartItems.map(item => `
-                <div class="item">
-                    <span class="item-name">${item.name}</span>
-                    <span class="item-qty">x${item.quantity}</span>
-                    <span class="item-price">${item.price.toFixed(2)}</span>
+            <div class="header-section">
+                <div class="company-info">
+                    <h3>KNC POS Company</h3>
+                    <p>123/456 Example Street, Bangkok, Thailand</p>
+                    <p>Tel: 081-234-5678</p>
+                    <p>Tax ID: 1234567890123</p>
                 </div>
-            `).join('')}
-            <div class="line"></div>
-            <div class="total">Total: ${finalAmount.toFixed(2)}</div>
-            ${sale.discount > 0 ? `<div class="total">Discount: -${sale.discount.toFixed(2)}</div>` : ''}
-            <div class="total">Final Amount: ${finalAmount.toFixed(2)}</div>
-            <div class="total">Payment: ${paymentAmount.toFixed(2)}</div>
-            <div class="total">Change: ${changeDue.toFixed(2)}</div>
-            <div class="line"></div>
-            <div class="footer">
-                <p>Thank you for your purchase!</p>
+                <div class="document-info">
+                    <div class="document-title">ใบส่งของ / DELIVERY NOTE</div>
+                    <p class="text-right"><strong>เลขที่:</strong> ${sale.id}</p>
+                    <p class="text-right"><strong>วันที่:</strong> ${formatDate(new Date())}</p>
+                </div>
+            </div>
+
+            <div class="document-details">
+                <div class="detail-block">
+                    <p class="bold">ผู้ส่ง:</p>
+                    <p>KNC POS Company</p>
+                    <p>123/456 Example Street</p>
+                    <p>Bangkok, Thailand</p>
+                    <p>Tel: 081-234-5678</p>
+                </div>
+                <div class="detail-block">
+                    <p class="bold">ผู้รับ:</p>
+                    ${customer ? `
+                        <p>${customer.name}</p>
+                        <p>ที่อยู่: ${customer.address || '-'}</p>
+                        <p>โทร: ${customer.phone || '-'}</p>
+                    ` : `
+                        <p>ลูกค้าทั่วไป</p>
+                        <p>ที่อยู่: -</p>
+                        <p>โทร: -</p>
+                    `}
+                </div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th class="text-center">ลำดับ</th>
+                        <th class="item-name">รายการ</th>
+                        <th class="text-center item-qty">จำนวน</th>
+                        <th class="text-center item-unit">หน่วย</th>
+                        <th class="text-right item-price">ราคา/หน่วย</th>
+                        <th class="text-right item-total">จำนวนเงิน</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${cartItems.map((item, index) => `
+                        <tr>
+                            <td class="text-center">${index + 1}</td>
+                            <td class="item-name">${item.name}</td>
+                            <td class="text-center item-qty">${item.quantity}</td>
+                            <td class="text-center item-unit">${item.unit || 'ชิ้น'}</td>
+                            <td class="text-right item-price">${item.price.toFixed(2)}</td>
+                            <td class="text-right item-total">${(item.price * item.quantity).toFixed(2)}</td>
+                        </tr>
+                    `).join('')}
+                    <tr>
+                        <td colspan="5" class="text-right bold">รวมเงิน:</td>
+                        <td class="text-right bold">${finalAmount.toFixed(2)}</td>
+                    </tr>
+                    ${sale.discount > 0 ? `
+                    <tr>
+                        <td colspan="5" class="text-right bold">ส่วนลด:</td>
+                        <td class="text-right bold">-${sale.discount.toFixed(2)}</td>
+                    </tr>
+                    ` : ''}
+                    <tr class="total-row">
+                        <td colspan="5" class="text-right bold">ยอดสุทธิ:</td>
+                        <td class="text-right bold">${finalAmount.toFixed(2)}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="signature-section">
+                <div class="signature-block">
+                    <div class="signature-line"></div>
+                    <p>(................................................)</p>
+                    <p>ผู้ส่ง</p>
+                </div>
+                <div class="signature-block">
+                    <div class="signature-line"></div>
+                    <p>(................................................)</p>
+                    <p>ผู้รับสินค้า</p>
+                </div>
+            </div>
+
+            <div class="note">
+                <p>หมายเหตุ: กรุณาตรวจสอบสินค้าก่อนลงนามรับสินค้า</p>
             </div>
         </div>
     </body>
