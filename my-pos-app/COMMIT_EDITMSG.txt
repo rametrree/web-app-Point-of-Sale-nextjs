@@ -1,4 +1,1 @@
-feat: Refine delivery note layout and styling
-
-- Adjust delivery note dimensions to 9x11 inches.
-- Reapply and enhance styling, including colors and table column widths, for a more formal and visually appealing look.
+docs: Improve README.md for clarity and completeness
