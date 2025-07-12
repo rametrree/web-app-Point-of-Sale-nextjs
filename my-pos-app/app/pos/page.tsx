@@ -1,8 +1,78 @@
 // app/pos/page.tsx
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Product, Customer } from '@prisma/client';
 import { useRouter } from 'next/navigation';
+import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
+
+// Helper function to format date
+const formatDate = (date: Date) => {
+  const d = new Date(date);
+  return d.toLocaleString('th-TH', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+// Function to print the sale receipt
+const printSaleReceipt = (sale: any, cartItems: CartItem[], finalAmount: number, paymentAmount: number, changeDue: number, customer: Customer | null) => {
+  const receiptContent = `
+    <html>
+    <head>
+        <title>Sale Receipt</title>
+        <style>
+            body { font-family: 'Sarabun', sans-serif; font-size: 12px; margin: 0; padding: 10px; }
+            .container { width: 200px; margin: 0 auto; }
+            .header, .footer { text-align: center; margin-bottom: 10px; }
+            .item { display: flex; justify-content: space-between; margin-bottom: 2px; }
+            .item-name { flex-grow: 1; }
+            .item-qty { width: 30px; text-align: center; }
+            .item-price { width: 50px; text-align: right; }
+            .total { text-align: right; font-weight: bold; margin-top: 10px; }
+            .line { border-top: 1px dashed #000; margin: 5px 0; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h3>KNC POS</h3>
+                <p>Sale ID: ${sale.id}</p>
+                <p>Date: ${formatDate(new Date())}</p>
+            </div>
+            <div class="line"></div>
+            ${customer ? `<p>Customer: ${customer.name} ${customer.isMember ? '(Member)' : ''}</p><div class="line"></div>` : ''}
+            
+            ${cartItems.map(item => `
+                <div class="item">
+                    <span class="item-name">${item.name}</span>
+                    <span class="item-qty">x${item.quantity}</span>
+                    <span class="item-price">${item.price.toFixed(2)}</span>
+                </div>
+            `).join('')}
+            <div class="line"></div>
+            <div class="total">Total: ${finalAmount.toFixed(2)}</div>
+            ${sale.discount > 0 ? `<div class="total">Discount: -${sale.discount.toFixed(2)}</div>` : ''}
+            <div class="total">Final Amount: ${finalAmount.toFixed(2)}</div>
+            <div class="total">Payment: ${paymentAmount.toFixed(2)}</div>
+            <div class="total">Change: ${changeDue.toFixed(2)}</div>
+            <div class="line"></div>
+            <div class="footer">
+                <p>Thank you for your purchase!</p>
+            </div>
+        </div>
+    </body>
+    </html>
+  `;
+
+  const printWindow = window.open('', '_blank');
+  if (printWindow) {
+    printWindow.document.write(receiptContent);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  } else {
+    alert('Please allow pop-ups for printing.');
+  }
+};
+
 
 // Type สำหรับ Item ในตะกร้า
 interface CartItem {
@@ -23,32 +93,17 @@ export default function POSPage() {
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [userRole, setUserRole] = useState<string | null>(null);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scanCooldownRef = useRef(false);
+
+  // Refs to hold the latest state and functions to avoid stale closures
+  const productsRef = useRef(products);
+  useEffect(() => { productsRef.current = products; }, [products]);
 
   const router = useRouter();
 
-  useEffect(() => {
-    // ตรวจสอบ Authentication เมื่อโหลดหน้า
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    if (!token || !storedUser) {
-      router.push('/login');
-      return;
-    }
-    try {
-      const user = JSON.parse(storedUser);
-      setUserRole(user.role);
-    } catch (e) {
-      console.error("Failed to parse user data from localStorage", e);
-      router.push('/login');
-      return;
-    }
-
-    fetchProducts();
-    fetchCustomers();
-  }, []);
-
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     const token = localStorage.getItem('token');
     if (!token) return;
     try {
@@ -67,9 +122,9 @@ export default function POSPage() {
       console.error('Error fetching products:', err);
       setError('Network error loading products');
     }
-  };
+  }, [router]);
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     const token = localStorage.getItem('token');
     if (!token) return;
     try {
@@ -88,7 +143,139 @@ export default function POSPage() {
       console.error('Error fetching customers:', err);
       setError('Network error loading customers');
     }
-  };
+  }, [router]);
+
+  // เพิ่มสินค้าเข้าตะกร้า - ใช้ useCallback เพื่อให้ฟังก์ชันเสถียร
+  const addToCart = useCallback((product: Product, quantityToAdd: number = 1) => {
+    setCart(prevCart => {
+      const existingItem = prevCart.find(item => item.productId === product.id);
+      const currentCartQuantity = existingItem ? existingItem.quantity : 0;
+
+      if (currentCartQuantity + quantityToAdd > product.stock) {
+        setError(`Not enough stock for ${product.name}. Available: ${product.stock - currentCartQuantity}`);
+        return prevCart;
+      }
+      
+      setError('');
+
+      if (existingItem) {
+        return prevCart.map(item =>
+          item.productId === product.id
+            ? { ...item, quantity: item.quantity + quantityToAdd }
+            : item
+        );
+      }
+      
+      return [
+        ...prevCart,
+        {
+          productId: product.id,
+          name: product.name,
+          price: product.price,
+          quantity: quantityToAdd,
+          sku: product.sku,
+          isRefundable: product.isRefundable,
+        },
+      ];
+    });
+  }, [setError]); // ระบุ dependency ที่จำเป็น
+  const addToCartRef = useRef(addToCart);
+  useEffect(() => { addToCartRef.current = addToCart; }, [addToCart]);
+
+  const onScanSuccess = useCallback((decodedText: string, decodedResult: any) => {
+    if (scanCooldownRef.current) return;
+
+    scanCooldownRef.current = true;
+    setTimeout(() => { scanCooldownRef.current = false; }, 1500);
+
+    const product = productsRef.current.find(p => p.sku === decodedText);
+    if (product) {
+      addToCartRef.current(product);
+      setSuccessMessage(`Added ${product.name} to cart.`);
+      setTimeout(() => setSuccessMessage(''), 2000);
+    } else {
+      setError('Product with scanned SKU not found.');
+      setTimeout(() => setError(''), 2000);
+    }
+  }, [productsRef, addToCartRef, scanCooldownRef, setSuccessMessage, setError]);
+
+
+  useEffect(() => {
+    // ตรวจสอบ Authentication เมื่อโหลดหน้า
+    const token = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
+    if (!token || !storedUser) {
+      router.push('/login');
+      return;
+    }
+    try {
+      // Optional: สามารถ decode token เพื่อเช็ค role ได้ถ้าจำเป็น
+      // แต่ตอนนี้เราไม่ได้ใช้ userRole ใน component นี้
+      JSON.parse(storedUser);
+    } catch (e) {
+      console.error("Failed to parse user data from localStorage", e);
+      router.push('/login');
+      return;
+    }
+
+    fetchProducts();
+    fetchCustomers();
+  }, [router, fetchProducts, fetchCustomers]);
+
+  // Barcode Scanner Logic
+  useEffect(() => {
+    if (isScannerOpen) {
+      const scanner = new Html5Qrcode("reader");
+      scannerRef.current = scanner;
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+      
+      const onScanSuccess = (decodedText: string, decodedResult: any) => {
+        if (scanCooldownRef.current) return; // ถ้าอยู่ในช่วง cooldown ให้ข้ามไป
+
+        scanCooldownRef.current = true; // เริ่ม cooldown
+        setTimeout(() => { scanCooldownRef.current = false; }, 1500); // Cooldown 1.5 วินาที
+
+        const product = productsRef.current.find(p => p.sku === decodedText);
+        if (product) {
+          addToCartRef.current(product);
+          setSuccessMessage(`Added ${product.name} to cart.`);
+          // ล้าง success message หลังจากแสดงผลสักครู่
+          setTimeout(() => setSuccessMessage(''), 2000);
+        } else {
+          setError('Product with scanned SKU not found.');
+          // ล้าง error message หลังจากแสดงผลสักครู่
+          setTimeout(() => setError(''), 2000);
+        }
+      };
+
+      const onScanFailure = (error: any) => {
+        // handle scan failure, usually better to ignore and keep scanning.
+        // console.warn(`Code scan error = ${error}`);
+      };
+
+      scanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
+        .catch(err => {
+          setError("Failed to start scanner. Please check camera permissions.");
+          console.error("Scanner start error:", err);
+          setIsScannerOpen(false);
+        });
+
+    } else {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch(err => {
+          console.error("Failed to stop scanner:", err);
+        });
+      }
+    }
+
+    return () => {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch(err => {
+          console.error("Cleanup failed to stop scanner:", err);
+        });
+      }
+    };
+  }, [isScannerOpen, onScanSuccess]);
 
 
   // กรองสินค้าที่แสดงตาม searchTerm
@@ -100,43 +287,6 @@ export default function POSPage() {
         (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   }, [products, searchTerm]);
-
-  // เพิ่มสินค้าเข้าตะกร้า
-  const addToCart = (product: Product, quantityToAdd: number = 1) => {
-    setError(''); // Clear any previous errors
-    const existingItem = cart.find((item) => item.productId === product.id);
-
-    // ตรวจสอบสต็อก
-    const availableStock = product.stock;
-    const currentCartQuantity = existingItem ? existingItem.quantity : 0;
-
-    if (currentCartQuantity + quantityToAdd > availableStock) {
-      setError(`Not enough stock for ${product.name}. Available: ${availableStock - currentCartQuantity}`);
-      return;
-    }
-
-    if (existingItem) {
-      setCart(
-        cart.map((item) =>
-          item.productId === product.id
-            ? { ...item, quantity: item.quantity + quantityToAdd }
-            : item
-        )
-      );
-    } else {
-      setCart([
-        ...cart,
-        {
-          productId: product.id,
-          name: product.name,
-          price: product.price,
-          quantity: quantityToAdd,
-          sku: product.sku,
-          isRefundable: product.isRefundable,
-        },
-      ]);
-    }
-  };
 
   // ลบสินค้าออกจากตะกร้า
   const removeFromCart = (productId: string) => {
@@ -194,6 +344,11 @@ export default function POSPage() {
   // คำนวณเงินทอน
   const changeDue = paymentAmount - finalAmount;
 
+  // กำหนดค่าเริ่มต้นของ paymentAmount เป็น finalAmount
+  useEffect(() => {
+    setPaymentAmount(finalAmount);
+  }, [finalAmount]);
+
   // จัดการการสแกน/กรอก SKU
   const handleScanOrSkuInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -249,6 +404,9 @@ export default function POSPage() {
         setPaymentAmount(0); // Reset payment
         setSelectedCustomerId(null); // Reset customer
         fetchProducts(); // Refresh product stock
+        
+        const customerForReceipt = customers.find(c => c.id === selectedCustomerId);
+        printSaleReceipt(data, cart, finalAmount, paymentAmount, changeDue, customerForReceipt);
       } else {
         const errorData = await response.json();
         setError(errorData.message || 'Failed to complete sale');
@@ -283,6 +441,15 @@ export default function POSPage() {
           onChange={(e) => setSearchTerm(e.target.value)}
           onKeyDown={handleScanOrSkuInput} // สำหรับกรอก/สแกน SKU แล้วกด Enter
         />
+
+        <button 
+          onClick={() => setIsScannerOpen(!isScannerOpen)}
+          className="w-full p-2 mb-4 text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
+        >
+          {isScannerOpen ? 'Close Scanner' : 'Open Barcode Scanner'}
+        </button>
+
+        {isScannerOpen && <div id="reader" className="w-full"></div>}
 
         {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
         {successMessage && <p className="text-green-600 text-sm mb-4">{successMessage}</p>}
@@ -392,6 +559,7 @@ export default function POSPage() {
               min="0"
               value={paymentAmount}
               onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+              onFocus={() => { if (paymentAmount === finalAmount) setPaymentAmount(0); }}
               className="w-full p-2 border border-gray-300 rounded-md text-3xl text-right font-bold"
             />
           </div>

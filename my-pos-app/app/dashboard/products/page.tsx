@@ -1,6 +1,6 @@
 // app/dashboard/products/page.tsx
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Product } from '@prisma/client'; // Import type จาก Prisma Client
 import { useRouter } from 'next/navigation';
 
@@ -31,11 +31,7 @@ export default function ProductManagementPage() {
   });
   const router = useRouter(); // สำหรับการ redirect หรือ refresh page
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     setLoading(true);
     setError('');
     const token = localStorage.getItem('token');
@@ -65,7 +61,11 @@ export default function ProductManagementPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type, checked } = e.target as HTMLInputElement;

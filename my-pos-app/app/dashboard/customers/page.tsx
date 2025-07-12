@@ -1,6 +1,6 @@
 // app/dashboard/customers/page.tsx
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Customer } from '@prisma/client';
 import { useRouter } from 'next/navigation';
 
@@ -26,11 +26,7 @@ export default function CustomerManagementPage() {
   });
   const router = useRouter();
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
-
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     setLoading(true);
     setError('');
     const token = localStorage.getItem('token');
@@ -60,7 +56,11 @@ export default function CustomerManagementPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;

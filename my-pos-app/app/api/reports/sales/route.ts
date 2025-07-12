@@ -54,37 +54,28 @@ export async function GET(request: Request) {
       },
     });
 
-    // คำนวณกำไร-ขาดทุน (แบบง่ายๆ ยังไม่มีต้นทุนสินค้า)
-    // ถ้าต้องการกำไร-ขาดทุนจริง ต้องเพิ่ม `costPrice` ใน Product Model
-    const salesWithCalculations = sales.map(sale => {
-      let totalCostPrice = 0; // สมมติว่าต้องการรวมต้นทุนด้วย
-      // ถ้าไม่มี costPrice ใน Product Model, กำไรจะเท่ากับ finalAmount (รายได้)
-      // หรืออาจจะนำไปรวมกับข้อมูลต้นทุนในภายหลัง
-
-      sale.items.forEach(item => {
-        // ถ้ามี costPrice ใน Product model:
-        // totalCostPrice += item.quantity * item.product.costPrice;
-      });
-
-      return {
-        ...sale,
-        // profit: sale.finalAmount - totalCostPrice, // กำไร (ถ้ามีต้นทุน)
-      };
-    });
+    // หมายเหตุ: การคำนวณกำไร-ขาดทุน สามารถทำได้ในภายหลัง
+    // โดยการเพิ่ม `costPrice` ใน Product Model และคำนวณจาก `sale.items`
+    //
+    // ตัวอย่าง:
+    // const salesWithProfit = sales.map(sale => {
+    //   const totalCostPrice = sale.items.reduce((acc, item) => acc + (item.quantity * (item.product.costPrice || 0)), 0);
+    //   return { ...sale, profit: sale.finalAmount - totalCostPrice };
+    // });
+    // const totalProfit = salesWithProfit.reduce((sum, sale) => sum + sale.profit, 0);
 
 
     // คำนวณยอดรวมทั้งหมดสำหรับช่วงเวลาที่เลือก
     const totalRevenue = sales.reduce((sum, sale) => sum + sale.finalAmount, 0);
     const totalDiscountGiven = sales.reduce((sum, sale) => sum + sale.discount, 0);
-    // const totalProfit = salesWithCalculations.reduce((sum, sale) => sum + (sale.profit || 0), 0);
 
     return NextResponse.json({
-      sales: salesWithCalculations,
+      sales: sales, // ส่งข้อมูลการขายเดิมไปก่อน
       summary: {
         totalSalesCount: sales.length,
         totalRevenue: totalRevenue,
         totalDiscountGiven: totalDiscountGiven,
-        // totalProfit: totalProfit,
+        // totalProfit: totalProfit, // สามารถเปิดใช้งานได้เมื่อคำนวณกำไรแล้ว
       },
     });
   } catch (error) {

@@ -1,6 +1,6 @@
 // app/dashboard/reports/sales/page.tsx
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 // import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'; // ถ้าต้องการใช้ Chart
 
@@ -38,11 +38,7 @@ export default function SalesReportPage() {
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]); // วันนี้
   const router = useRouter();
 
-  useEffect(() => {
-    fetchSalesReport();
-  }, [startDate, endDate]); // Trigger fetch เมื่อ startDate หรือ endDate เปลี่ยน
-
-  const fetchSalesReport = async () => {
+  const fetchSalesReport = useCallback(async () => {
     setLoading(true);
     setError('');
     const token = localStorage.getItem('token');
@@ -74,7 +70,11 @@ export default function SalesReportPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router, startDate, endDate]);
+
+  useEffect(() => {
+    fetchSalesReport();
+  }, [fetchSalesReport]); // Trigger fetch เมื่อ startDate หรือ endDate เปลี่ยน
 
   const formatDate = (isoString: string) => {
     const date = new Date(isoString);

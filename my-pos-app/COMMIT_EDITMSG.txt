@@ -1,0 +1,9 @@
+feat: Implement barcode scanning, receipt printing, and payment input improvements
+
+- Add barcode scanning functionality to POS page using html5-qrcode.
+- Implement receipt printing after successful sale, opening a new window for printing.
+- Enhance payment amount input field:
+  - Automatically set initial value to final amount.
+  - Clear input to 0 when focused if current value is the final amount.
+- Refactor `addToCart` and scanner `useEffect` for better state management and to prevent stale state issues.
+- Update dashboard pages to use `useCallback` for fetch functions.
